@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RLM 회귀 테스트</title>
+<style>
+  :root{
+    --bg:#070b14; --panel:#0f1626; --line:#1e2a44; --text:#e8eef8; --muted:#94a3b8;
+    --ok:#22c55e; --okbg:#0d2417; --fail:#ef4444; --failbg:#2a0f10; --accent:#f59e0b;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.5 -apple-system,"Segoe UI",Inter,Roboto,sans-serif; }
+  header{ padding:18px 22px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--bg); z-index:2; }
+  h1{ margin:0 0 4px; font-size:17px; letter-spacing:-.01em; }
+  .sub{ color:var(--muted); font-size:12px; }
+  #banner{ margin-top:12px; padding:14px 16px; border-radius:12px; font-weight:600;
+    font-size:15px; border:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+  #banner.pass{ background:var(--okbg); border-color:#14532d; color:#86efac; }
+  #banner.fail{ background:var(--failbg); border-color:#7f1d1d; color:#fca5a5; }
+  #banner.run{ background:var(--panel); color:var(--muted); }
+  .count{ font-variant-numeric:tabular-nums; font-size:20px; }
+  main{ padding:14px 22px 60px; max-width:1000px; }
+  .group{ margin:18px 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--accent); border-top:1px solid var(--line); padding-top:14px; }
+  .row{ display:flex; gap:10px; padding:6px 10px; border-radius:8px; align-items:baseline; }
+  .row:nth-child(odd){ background:rgba(255,255,255,.02); }
+  .tag{ flex:0 0 auto; font-weight:700; font-size:11px; padding:1px 7px; border-radius:5px; }
+  .row.p .tag{ background:var(--okbg); color:#86efac; }
+  .row.f .tag{ background:var(--failbg); color:#fca5a5; }
+  .name{ flex:1 1 auto; }
+  .msg{ color:var(--muted); font-size:12px; }
+  .row.f .msg{ color:#fca5a5; }
+  code{ font-family:"JetBrains Mono",ui-monospace,Consolas,monospace; font-size:12px;
+    background:rgba(255,255,255,.05); padding:1px 5px; border-radius:4px; }
+  iframe{ position:fixed; width:1200px; height:800px; left:-4000px; top:0; border:0; }
+  .hint{ color:var(--muted); font-size:12px; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚀 로켓 발사 지도 — 자동 회귀 테스트</h1>
+  <div class="sub">실제 앱(<code>/</code>)을 iframe으로 로드해 배포 코드의 전역 함수·DOM·서빙 소스를 검증합니다. 코드 복제 없음.</div>
+  <div id="banner" class="run">⏳ 앱 로딩 및 테스트 준비 중…</div>
+  <div class="hint">이 페이지는 프록시 경유로 열어야 합니다 → <code>node proxy-server_Rev0.js</code> 후 <code>http://localhost:8787/test_Rev0.html</code></div>
+</header>
+<main id="out"></main>
+<iframe id="app" title="app under test"></iframe>
+
+<script>
+// ============================================================================
+// 초경량 테스트 프레임워크
+// ============================================================================
+const OUT = document.getElementById('out');
+const BANNER = document.getElementById('banner');
+const suite = [];   // { group, name, fn }
+let curGroup = null;
+function group(g){ curGroup = g; }
+function test(name, fn){ suite.push({ group: curGroup, name, fn }); }
+
+function assert(cond, msg){ if(!cond) throw new Error(msg || 'assert 실패'); }
+function eq(a, b, msg){
+  if(a !== b) throw new Error((msg? msg+': ' : '') + `기대 ${JSON.stringify(b)} · 실제 ${JSON.stringify(a)}`);
+}
+function throwsNull(v, msg){ if(v !== null) throw new Error((msg||'null 기대') + ` · 실제 ${JSON.stringify(v)}`); }
+
+// ============================================================================
+// 앱 로드 대기
+// ============================================================================
+const iframe = document.getElementById('app');
+let CW = null;             // 앱 window
+let initErrors = [];       // 로드 후 발생한 런타임 에러
+
+function waitForApp(){
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + 15000;
+    iframe.addEventListener('load', () => {
+      try{
+        CW = iframe.contentWindow;
+        CW.addEventListener('error', e => initErrors.push(e.message || String(e.error||'error')));
+      }catch(e){ /* cross-origin? */ }
+    });
+    (function poll(){
+      let ready = false;
+      try{
+        ready = CW && typeof CW.esc === 'function'
+          && CW.document.querySelectorAll('.leaflet-marker-icon,.marker-cluster').length > 0;
+      }catch(e){ return reject(new Error('iframe 접근 불가 (same-origin 아님?) — 프록시로 test_Rev0.html을 열었는지 확인: ' + e.message)); }
+      if(ready) return resolve();
+      if(Date.now() > deadline) return reject(new Error('앱 초기화 타임아웃(마커 미생성). 콘솔/네트워크 확인.'));
+      setTimeout(poll, 120);
+    })();
+    iframe.src = '/';   // 실제 앱(같은 오리진)
+  });
+}
+
+// ============================================================================
+// 테스트 정의
+// ============================================================================
+
+// --- A. 순수 도우미 함수 (앱 전역에서 직접 호출 = 실제 코드) ---
+group('A. 순수 도우미 함수');
+test('esc(): HTML 특수문자 이스케이프', () => {
+  eq(CW.esc('<b>&"\''), '&lt;b&gt;&amp;&quot;&#39;');
+  eq(CW.esc(null), '');
+  eq(CW.esc(42), '42');
+});
+test('safeUrl(): http/https만 통과, javascript: 차단', () => {
+  eq(CW.safeUrl('https://x.com'), 'https://x.com');
+  eq(CW.safeUrl('http://x.com'), 'http://x.com');
+  eq(CW.safeUrl('javascript:alert(1)'), '');
+  eq(CW.safeUrl('ftp://x'), '');
+  eq(CW.safeUrl(''), '');
+  eq(CW.safeUrl(null), '');
+});
+test('flagEmoji(): 국가코드→국기, 미상→🌐', () => {
+  eq(CW.flagEmoji('US'), '\u{1F1FA}\u{1F1F8}');
+  eq(CW.flagEmoji('USA'), '\u{1F1FA}\u{1F1F8}', '3자리→2자리 매핑');
+  eq(CW.flagEmoji('KOR'), '\u{1F1F0}\u{1F1F7}');
+  eq(CW.flagEmoji(''), '\u{1F310}');
+  eq(CW.flagEmoji('ZZZ'), '\u{1F310}', '미지원 3자리');
+  eq(CW.flagEmoji('UNK'), '\u{1F310}');
+});
+test('radiusFor(): 발사수 구간별 반경', () => {
+  eq(CW.radiusFor(0), 10); eq(CW.radiusFor(10), 10);
+  eq(CW.radiusFor(11), 17); eq(CW.radiusFor(40), 17);
+  eq(CW.radiusFor(41), 26); eq(CW.radiusFor(500), 26);
+});
+test('mapOutcome(): 상태문자열→결과 분류', () => {
+  eq(CW.mapOutcome('Launch Successful'), 'success');
+  eq(CW.mapOutcome('Failure'), 'failure');
+  eq(CW.mapOutcome('anomaly during ascent'), 'failure');
+  eq(CW.mapOutcome('Partial Failure'), 'partial', 'partial이 fail보다 우선');
+  eq(CW.mapOutcome('To Be Determined'), 'unknown');
+  eq(CW.mapOutcome(''), 'unknown');
+  eq(CW.mapOutcome(null), 'unknown');
+});
+test('launchKey(): id 우선, 없으면 net|rocket', () => {
+  eq(CW.launchKey({ id:'abc' }), 'abc');
+  eq(CW.launchKey({ netISO:'2026-01-01T00:00:00Z', rocket:'Nuri' }), '2026-01-01T00:00:00Z|Nuri');
+});
+test('icsEscape(): 콤마/세미콜론/백슬래시/개행 이스케이프', () => {
+  eq(CW.icsEscape('a,b'), 'a\\,b');
+  eq(CW.icsEscape('a;b'), 'a\\;b');
+  eq(CW.icsEscape('line1\nline2'), 'line1\\nline2');
+});
+test('kstString(): 유효 ISO→문자열, 무효→null', () => {
+  const s = CW.kstString('2025-01-15T06:11:00Z');
+  assert(typeof s === 'string' && s.length > 0, 'ISO는 문자열 반환');
+  throwsNull(CW.kstString('not-a-date'), '무효 날짜');
+  throwsNull(CW.kstString(''), '빈 문자열');
+  throwsNull(CW.kstString(null), 'null');
+});
+test('koreanSiteName(): 영문 발사장명→한글, 미상→null', () => {
+  eq(CW.koreanSiteName('Cape Canaveral SFS', ''), '케이프 커내버럴');
+  eq(CW.koreanSiteName('Naro Space Center', ''), '나로 우주센터');
+  throwsNull(CW.koreanSiteName('Nowhere Pad', ''), '미등록 발사장');
+});
+test('mapApiUpcoming(): LL2 원시객체→정규화(위험 스킴 차단)', () => {
+  const r = CW.mapApiUpcoming({
+    id:'x1', net:'2026-03-01T12:00:00Z',
+    status:{ abbrev:'Go' },
+    rocket:{ configuration:{ name:'Falcon 9' } },
+    pad:{ latitude:'28.5', longitude:'-80.6', name:'LC-39A', location:{ country_code:'USA' } },
+    mission:{ name:'Test Mission' },
+    launch_service_provider:{ name:'SpaceX' },
+    vidURLs:['javascript:evil()']
+  });
+  eq(r.id, 'x1'); eq(r.status, 'Go'); eq(r.rocket, 'Falcon 9');
+  eq(r.lat, 28.5); eq(r.lng, -80.6); eq(r.siteCountry, 'USA');
+  eq(r.mission, 'Test Mission'); eq(r.date, '2026-03-01');
+  throwsNull(r.vidURL, 'javascript: 영상URL은 null로 차단');
+});
+
+// --- B. 폴백 데이터 무결성 ---
+group('B. 폴백 데이터 무결성');
+test('buildFallbackUpcoming(): 7건, 필수 필드 완비', () => {
+  const list = CW.buildFallbackUpcoming();
+  eq(list.length, 7, '예정 발사 건수');
+  for(const it of list){
+    assert(typeof it.lat === 'number' && typeof it.lng === 'number', 'lat/lng 숫자: '+it.mission);
+    assert(!!it.rocket && !!it.siteName && !!it.status, '핵심필드: '+it.mission);
+    assert(!!it.netISO && !isNaN(new Date(it.netISO)), 'netISO 유효: '+it.mission);
+  }
+});
+test('buildFallbackHistory(): 최신순 정렬 + 유효 outcome enum', () => {
+  const list = CW.buildFallbackHistory();
+  assert(list.length >= 16, '이력 건수 충분: '+list.length);
+  const ok = new Set(['success','failure','partial','unknown']);
+  for(const it of list){ assert(ok.has(it.outcome), '유효 outcome: '+it.outcome); }
+  for(let i=1;i<list.length;i++){
+    assert(new Date(list[i-1].netISO) >= new Date(list[i].netISO), '내림차순 정렬 위반 @'+i);
+  }
+});
+test('buildFallbackHistory(): 2025년 실제 사건 포함(스타십 등)', () => {
+  const list = CW.buildFallbackHistory();
+  const has2025 = list.some(it => (it.netISO||'').startsWith('2025'));
+  assert(has2025, '2025 시드 존재');
+  const starship = list.some(it => /Starship/i.test(it.rocket||''));
+  assert(starship, 'Starship 실패 기록 존재');
+});
+
+// --- C. DOM 스모크 (실제 렌더 결과) ---
+group('C. DOM 스모크');
+test('핵심 요소 존재(#map/#lang-toggle/#site-datalist/#api-status)', () => {
+  for(const id of ['map','lang-toggle','site-datalist','api-status','onboarding','launch-actions']){
+    assert(CW.document.getElementById(id), '#'+id+' 존재');
+  }
+});
+test('발사장 마커가 지도에 렌더됨', () => {
+  const n = CW.document.querySelectorAll('.leaflet-marker-icon,.marker-cluster').length;
+  assert(n > 0, '마커/클러스터 개수 > 0 (실제 '+n+')');
+});
+test('검색 데이터리스트가 발사장으로 채워짐', () => {
+  const n = CW.document.querySelectorAll('#site-datalist option').length;
+  assert(n >= 10, '데이터리스트 옵션 >= 10 (실제 '+n+')');
+});
+test('데이터 출처 4종이 지도 attribution에 표기됨', () => {
+  const a = CW.document.querySelector('.leaflet-control-attribution');
+  assert(a, 'attribution 컨트롤 존재');
+  const html = a.innerHTML;
+  for(const src of ['The Space Devs','기상청','Open-Meteo','OpenStreetMap']){
+    assert(html.includes(src), '출처 표기 누락: '+src);
+  }
+});
+test('접근성: 온보딩 모달에 role=dialog/aria-modal 부여됨', () => {
+  const ob = CW.document.getElementById('onboarding');
+  eq(ob.getAttribute('role'), 'dialog');
+  eq(ob.getAttribute('aria-modal'), 'true');
+  assert(ob.getAttribute('aria-labelledby'), 'aria-labelledby 존재');
+});
+test('로드 후 캡처된 런타임 JS 에러 없음', () => {
+  assert(initErrors.length === 0, 'JS 에러: ' + JSON.stringify(initErrors));
+});
+
+// --- D. i18n 계약(DOM ↔ 사전) ---
+group('D. i18n 계약');
+test('모든 data-i18n* 키가 사전에 존재(ko)', () => {
+  const attrs = ['data-i18n','data-i18n-html','data-i18n-ph','data-i18n-title','data-i18n-aria'];
+  const keys = new Set();
+  attrs.forEach(a => CW.document.querySelectorAll('['+a+']').forEach(el => keys.add(el.getAttribute(a))));
+  assert(keys.size > 20, '수집된 키 충분: '+keys.size);
+  const missing = [];
+  keys.forEach(k => { const v = CW.t(k); if(v == null || v === '' || v === k) missing.push(k); });
+  assert(missing.length === 0, '누락/미번역 키: ' + JSON.stringify(missing));
+});
+test('언어 전환 setLang(en/ko) 무오류 + 토글 라벨 반영', () => {
+  const before = initErrors.length;
+  CW.setLang('en');
+  eq(CW.document.getElementById('lang-toggle').textContent, '한국어', 'EN 상태 라벨');
+  CW.setLang('ko');
+  eq(CW.document.getElementById('lang-toggle').textContent, 'EN', 'KO 상태 라벨');
+  assert(initErrors.length === before, '전환 중 JS 에러 발생');
+});
+
+// --- E. 오프라인 자립(CDN 내장화 회귀 방지) ---
+group('E. 오프라인 자립 (서빙 소스 검사)');
+let APP_SRC = '';
+test('서빙된 HTML 취득(> 1MB)', async () => {
+  const res = await fetch('/', { cache:'no-store' });
+  assert(res.ok, 'GET / 200');
+  APP_SRC = await res.text();
+  assert(APP_SRC.length > 1_000_000, '단일파일 크기 > 1MB (실제 '+Math.round(APP_SRC.length/1024)+'KB)');
+});
+test('외부 CDN/폰트 참조 0건', () => {
+  const forbidden = ['cdnjs.cloudflare.com','fonts.googleapis.com','fonts.gstatic.com','unpkg.com','cdn.jsdelivr.net'];
+  const hit = forbidden.filter(h => APP_SRC.includes(h));
+  assert(hit.length === 0, '외부 참조 발견: ' + JSON.stringify(hit));
+});
+test('라이브러리·폰트가 인라인 내장됨', () => {
+  assert(/leaflet .*inlined/i.test(APP_SRC), 'Leaflet 인라인');
+  assert(/markercluster .*inlined/i.test(APP_SRC), 'markercluster 인라인');
+  assert(/xlsx .*inlined/i.test(APP_SRC) || APP_SRC.includes('SheetJS'), 'SheetJS 인라인');
+  assert(APP_SRC.includes('@font-face') && /base64/.test(APP_SRC), '폰트 base64 내장');
+});
+test('제거된 기능(비교/미니차트/CSV/알림) 잔재 없음', () => {
+  for(const dead of ['compare-modal','renderCompareBar','renderMiniChart','export-csv','armReminders']){
+    assert(!APP_SRC.includes(dead), '제거 잔재 발견: ' + dead);
+  }
+});
+
+// --- F. PWA 엔드포인트 ---
+group('F. PWA 엔드포인트');
+test('/manifest.webmanifest 200 + 유효 JSON', async () => {
+  const res = await fetch('/manifest.webmanifest', { cache:'no-store' });
+  assert(res.ok, '200');
+  const j = JSON.parse(await res.text());
+  assert(j.name && Array.isArray(j.icons) && j.icons.length > 0, 'name/icons 필드');
+  eq(j.display, 'standalone', 'display 모드');
+});
+test('/icon.svg 200 + SVG', async () => {
+  const res = await fetch('/icon.svg', { cache:'no-store' });
+  assert(res.ok, '200');
+  const s = await res.text();
+  assert(/<svg[\s>]/.test(s) || s.trimStart().startsWith('<?xml'), 'SVG 콘텐츠');
+});
+
+// ============================================================================
+// 실행
+// ============================================================================
+function render(results){
+  let pass = 0, fail = 0, html = '';
+  let g = null;
+  for(const r of results){
+    if(r.group !== g){ g = r.group; html += `<div class="group">${r.group}</div>`; }
+    const cls = r.ok ? 'p' : 'f';
+    if(r.ok) pass++; else fail++;
+    html += `<div class="row ${cls}"><span class="tag">${r.ok?'PASS':'FAIL'}</span>`
+      + `<span class="name">${r.name}</span>`
+      + (r.msg ? `<span class="msg">${r.msg}</span>` : '') + `</div>`;
+  }
+  OUT.innerHTML = html;
+  const total = pass + fail;
+  const allPass = fail === 0;
+  BANNER.className = allPass ? 'pass' : 'fail';
+  BANNER.innerHTML = (allPass ? '✅ 전체 통과' : '❌ 실패 있음')
+    + ` &nbsp;<span class="count">${pass}/${total}</span>&nbsp; 통과`
+    + (fail ? ` · <span class="count">${fail}</span> 실패` : '');
+  // 헤드리스/자동화 판독용 신호
+  document.title = (allPass ? 'PASS ' : 'FAIL ') + pass + '/' + total + ' · RLM 회귀 테스트';
+  BANNER.setAttribute('data-status', allPass ? 'pass' : 'fail');
+  BANNER.setAttribute('data-pass', pass);
+  BANNER.setAttribute('data-total', total);
+}
+
+(async function run(){
+  const results = [];
+  try{
+    await waitForApp();
+  }catch(e){
+    BANNER.className = 'fail';
+    BANNER.innerHTML = '❌ 앱 로드 실패: ' + e.message;
+    document.title = 'FAIL 0/0 · 앱 로드 실패';
+    BANNER.setAttribute('data-status','fail');
+    return;
+  }
+  for(const tc of suite){
+    try{
+      await tc.fn();
+      results.push({ group: tc.group, name: tc.name, ok: true });
+    }catch(e){
+      results.push({ group: tc.group, name: tc.name, ok: false, msg: e.message });
+    }
+  }
+  render(results);
+})();
+</script>
+</body>
+</html>

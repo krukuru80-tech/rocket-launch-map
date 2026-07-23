@@ -1,0 +1,12 @@
+{
+  "name": "rocket-launch-map",
+  "version": "1.0.0",
+  "description": "세계 로켓 발사 지도 — 캐싱 프록시 서버 (The Space Devs / 기상청 / Open-Meteo / OSM)",
+  "private": true,
+  "scripts": {
+    "start": "node proxy-server_Rev0.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

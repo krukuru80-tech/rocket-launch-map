@@ -1,0 +1,15 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# 이 파일이 저장소 루트에 있으면 Render 대시보드에서 New + → Blueprint 로 원클릭 배포됩니다.
+# (수동 설정 시: Web Service / Build= npm install / Start= npm start 와 동일)
+services:
+  - type: web
+    name: rocket-launch-map
+    runtime: node
+    plan: free                # 무료 플랜(비활성 시 슬립 — 데모/공모전 데모용으로 충분)
+    region: singapore         # 한국에서 가장 가까운 Render 리전
+    buildCommand: npm install  # 의존성 0 — 실질 무동작이지만 Render 규약상 필요
+    startCommand: npm start    # → node proxy-server_Rev0.js
+    healthCheckPath: /         # 앱 HTML(200) 확인
+    envVars:
+      - key: KMA_SERVICE_KEY   # 기상청 공공데이터 서비스키
+        sync: false            # 저장소에 남기지 않고 대시보드에서 직접 입력

@@ -1,0 +1,16 @@
+{
+  "name": "세계 로켓 발사 지도",
+  "short_name": "로켓 지도",
+  "description": "전 세계 로켓 발사장의 위치·발사 횟수·성공률과 실시간 발사 일정을 한 화면에서.",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
