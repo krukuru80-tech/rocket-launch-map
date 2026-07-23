@@ -1385,19 +1385,39 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   /* ---------- mobile ---------- */
   @media (max-width: 720px){
-    #hud-top{ width: calc(100vw - 32px); padding:12px 15px; }
+    /* ── 상단 패널: 모바일 컴팩트 (지도 가림 최소화) ── */
+    #hud-top{ width: calc(100vw - 24px); top:12px; left:12px; padding:10px 12px; border-radius:12px; }
     #hud-top p{ display:none; }
-    #top-right-btns{ top:auto; bottom:170px; right:16px; flex-direction:column; }
-    .hud-btn{ padding:9px 12px; font-size:11.5px; }
+    #hud-top h1{ font-size:15px; margin:0 0 6px 0; }
+    #countdown-banner{ padding:6px 9px; margin-bottom:7px; font-size:11px; }
+    #countdown-banner .cd-time{ font-size:13px; }
+    #countdown-banner .cd-info small{ font-size:10px; }
+    .control-row{ gap:7px; margin-bottom:6px; }
+    .control-row label{ font-size:9.5px; margin-bottom:2px; }
+    .control-row select, .control-row input{ padding:6px 9px; font-size:12px; border-radius:7px; }
+    #hud-top .stat-row{ margin-top:8px; padding-top:8px; gap:12px; }
+    #hud-top .stat b{ font-size:15px; }
+    #hud-top .stat span{ font-size:9.5px; }
+
+    /* ── 우측 컨트롤: 아이콘 전용 세로 레일 (텍스트 라벨 숨겨 지도 노출 최대화) ── */
+    #top-right-btns{ top:50%; bottom:auto; right:10px; transform:translateY(-50%); flex-direction:column; gap:9px; }
+    .hud-btn{ width:44px; height:44px; padding:0; gap:4px; justify-content:center; font-size:19px; border-radius:12px; }
+    .hud-btn span[data-i18n]{ display:none; }          /* 한국·전시모드·발사일정 텍스트 숨김 → 이모지/아이콘만 */
+    #lang-toggle{ font-size:13px; }                    /* EN / 한국어 는 텍스트 유지 */
+    #theme-toggle{ padding:0; }
+    #schedule-toggle::before{ content:"📋"; font-size:18px; }   /* 텍스트 숨긴 자리에 일정 아이콘 (라이브 점은 유지) */
+    #reset-view{ right:10px; bottom:130px; top:auto; width:44px; height:44px; padding:0; gap:0; justify-content:center; font-size:0; border-radius:12px; }
+    #reset-view::before{ content:"🌍"; font-size:19px; }
+
+    /* ── 하단 시트 / 기타 ── */
     #info-panel{
-      left:16px; right:16px; top:auto; bottom:16px; width:auto;
-      transform: translateY(120%); max-height: 50vh;
+      left:12px; right:12px; top:auto; bottom:12px; width:auto;
+      transform: translateY(120%); max-height: 52vh;
     }
     #info-panel.show{ transform: translateY(0); }
     #legend{ display:none; }
     #api-status{ display:none; }
     #api-status.net-err{ display:flex; }   /* 연결 실패 시엔 모바일에서도 노출 → ↻ 다시 시도 사용 가능 */
-    #reset-view{ bottom:120px; }
     #schedule-drawer{ max-height:62vh; }
     table.data-table{ font-size:11px; }
     table.data-table .col-mission{ display:none; }
