@@ -1,5 +1,8 @@
 # 로켓 발사 지도 — 상업 배포 가이드
 
+> 🌐 **라이브 배포**: https://rocket-launch-map.onrender.com (Render, 무료 플랜 · GitHub `krukuru80-tech/rocket-launch-map` 연동, `render.yaml` Blueprint)
+> — 무료 플랜은 15분 미접속 시 슬립 → 다음 접속 시 ~30초 콜드스타트. 기상청 실연동은 대시보드 환경변수 `KMA_SERVICE_KEY` 설정 시 활성화(미설정 시 Open-Meteo 폴백).
+
 ## 구성 파일
 
 | 파일 | 역할 |

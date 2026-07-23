@@ -203,13 +203,17 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ---- 5) PWA 정적 파일 (홈 화면 추가용 매니페스트·아이콘) ----
-    if (u.pathname === '/manifest.webmanifest' || u.pathname === '/icon.svg'){
-      const fname = u.pathname === '/icon.svg' ? 'icon.svg' : 'manifest.webmanifest';
+    // ---- 5) PWA·공유 정적 파일 (매니페스트·아이콘·og 미리보기 이미지) ----
+    const STATIC = {
+      '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8'],
+      '/icon.svg':             ['icon.svg',             'image/svg+xml; charset=utf-8'],
+      '/rocket-preview.png':   ['rocket-preview.png',   'image/png'],   // og:image (SNS 공유 카드)
+    };
+    if (STATIC[u.pathname]){
+      const [fname, type] = STATIC[u.pathname];
       const fpath = path.join(__dirname, fname);
       if (fs.existsSync(fpath)){
-        const type = fname.endsWith('.svg') ? 'image/svg+xml' : 'application/manifest+json';
-        return send(res, 200, type + '; charset=utf-8', fs.readFileSync(fpath), { 'Cache-Control': 'public, max-age=86400' });
+        return send(res, 200, type, fs.readFileSync(fpath), { 'Cache-Control': 'public, max-age=86400' });
       }
     }
 
